@@ -335,6 +335,7 @@ class Event(EventMixin, LoggedModel):
         verbose_name=_('Event series'),
         default=False
     )
+    seating_plan = models.ForeignKey('SeatingPlan', on_delete=models.PROTECT, null=True, blank=True)
 
     class Meta:
         verbose_name = _("Event")
@@ -879,6 +880,7 @@ class SubEvent(EventMixin, LoggedModel):
         null=True, blank=True,
         verbose_name=_("Frontpage text")
     )
+    seating_plan = models.ForeignKey('SeatingPlan', on_delete=models.PROTECT, null=True, blank=True)
 
     items = models.ManyToManyField('Item', through='SubEventItem')
     variations = models.ManyToManyField('ItemVariation', through='SubEventItemVariation')
