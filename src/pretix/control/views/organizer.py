@@ -18,7 +18,9 @@ from django.views.generic import (
 )
 
 from pretix.api.models import WebHook
-from pretix.base.models import Device, Organizer, Team, TeamInvite, User
+from pretix.base.models import (
+    Device, Organizer, SeatingPlan, Team, TeamInvite, User,
+)
 from pretix.base.models.event import EventMetaProperty
 from pretix.base.models.organizer import TeamAPIToken
 from pretix.base.services.mail import SendMailException, mail
@@ -26,7 +28,7 @@ from pretix.control.forms.filter import OrganizerFilterForm
 from pretix.control.forms.organizer import (
     DeviceForm, EventMetaPropertyForm, OrganizerDeleteForm,
     OrganizerDisplaySettingsForm, OrganizerForm, OrganizerSettingsForm,
-    OrganizerUpdateForm, TeamForm, WebHookForm,
+    OrganizerUpdateForm, SeatingPlanForm, TeamForm, WebHookForm,
 )
 from pretix.control.permissions import (
     AdministratorPermissionRequiredMixin, OrganizerPermissionRequiredMixin,
@@ -870,3 +872,107 @@ class WebHookLogsView(OrganizerDetailViewMixin, OrganizerPermissionRequiredMixin
 
     def get_queryset(self):
         return self.webhook.calls.order_by('-datetime')
+
+
+class SeatingPlanListView(OrganizerDetailViewMixin, OrganizerPermissionRequiredMixin, ListView):
+    model = SeatingPlan
+    template_name = 'pretixcontrol/organizers/seatingplans.html'
+    permission = 'can_change_organizer_settings'
+    context_object_name = 'plans'
+
+    def get_queryset(self):
+        return self.request.organizer.seating_plans.all()
+
+
+class SeatingPlanCreateView(OrganizerDetailViewMixin, OrganizerPermissionRequiredMixin, CreateView):
+    model = Team
+    template_name = 'pretixcontrol/organizers/seatingplan_edit.html'
+    permission = 'can_change_organizer_settings'
+    form_class = SeatingPlanForm
+
+    def get_object(self, queryset=None):
+        return get_object_or_404(SeatingPlan, organizer=self.request.organizer, pk=self.kwargs.get('plan'))
+
+    def get_success_url(self):
+        return reverse('control:organizer.seatingplans', kwargs={
+            'organizer': self.request.organizer.slug,
+        })
+
+    def form_valid(self, form):
+        messages.success(self.request, _('The seating plan has been created. You can now use it for your events.'))
+        form.instance.organizer = self.request.organizer
+        ret = super().form_valid(form)
+        form.instance.log_action('pretix.seatingplan.created', user=self.request.user, data={
+            k: getattr(self.object, k) if k != 'limit_events' else [e.id for e in getattr(self.object, k).all()]
+            for k in form.changed_data
+        })
+        return ret
+
+    def form_invalid(self, form):
+        messages.error(self.request, _('Your changes could not be saved.'))
+        return super().form_invalid(form)
+
+
+class SeatingPlanUpdateView(OrganizerDetailViewMixin, OrganizerPermissionRequiredMixin, UpdateView):
+    model = SeatingPlan
+    template_name = 'pretixcontrol/organizers/seatingplan_edit.html'
+    permission = 'can_change_organizer_settings'
+    context_object_name = 'plan'
+    form_class = SeatingPlanForm
+
+    def get_object(self, queryset=None):
+        return get_object_or_404(SeatingPlan, organizer=self.request.organizer, pk=self.kwargs.get('plan'))
+
+    def get_success_url(self):
+        return reverse('control:organizer.seatingplans', kwargs={
+            'organizer': self.request.organizer.slug,
+        })
+
+    def form_valid(self, form):
+        if form.has_changed():
+            self.object.log_action('pretix.seatingplan.changed', user=self.request.user, data={
+                k: getattr(self.object, k) if k != 'limit_events' else [e.id for e in getattr(self.object, k).all()]
+                for k in form.changed_data
+            })
+        messages.success(self.request, _('Your changes have been saved.'))
+        return super().form_valid(form)
+
+    def form_invalid(self, form):
+        messages.error(self.request, _('Your changes could not be saved.'))
+        return super().form_invalid(form)
+
+
+class SeatingPlanDeleteView(OrganizerDetailViewMixin, OrganizerPermissionRequiredMixin, DeleteView):
+    model = SeatingPlan
+    template_name = 'pretixcontrol/organizers/seatingplan_delete.html'
+    permission = 'can_change_organizer_settings'
+    context_object_name = 'plan'
+
+    def get_object(self, queryset=None):
+        return get_object_or_404(SeatingPlan, organizer=self.request.organizer, pk=self.kwargs.get('plan'))
+
+    def get_success_url(self):
+        return reverse('control:organizer.seatingplans', kwargs={
+            'organizer': self.request.organizer.slug,
+        })
+
+    def get_context_data(self, *args, **kwargs) -> dict:
+        context = super().get_context_data(*args, **kwargs)
+        context['possible'] = self.is_allowed()
+        return context
+
+    def is_allowed(self) -> bool:
+        return not self.object.events.exists() and not self.object.subevents.exists()
+
+    @transaction.atomic
+    def delete(self, request, *args, **kwargs):
+        success_url = self.get_success_url()
+        self.object = self.get_object()
+        if self.is_allowed():
+            self.object.log_action('pretix.seatingplans.deleted', user=self.request.user)
+            self.object.delete()
+            messages.success(request, _('The selected plan has been deleted.'))
+            return redirect(success_url)
+        else:
+            messages.error(request, _('The selected plan cannot be deleted.'))
+            return redirect(success_url)

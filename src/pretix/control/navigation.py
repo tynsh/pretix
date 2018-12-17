@@ -81,6 +81,15 @@ def get_event_navigation(request: HttpRequest):
                 'active': url.url_name == 'event.settings.tax',
             },
             {
+                'label': _('Seating plans'),
+                'url': reverse('control:event.settings.seating', kwargs={
+                    'event': request.event.slug,
+                    'organizer': request.event.organizer.slug,
+                }),
+                'active': 'event.settings.seating' in url.url_name,
+                'icon': 'street-view',
+            },
+            {
                 'label': _('Invoicing'),
                 'url': reverse('control:event.settings.invoice', kwargs={
                     'event': request.event.slug,
@@ -459,6 +468,14 @@ def get_organizer_navigation(request):
             }),
             'active': 'organizer.webhook' in url.url_name,
             'icon': 'bolt',
+        })
+        nav.append({
+            'label': _('Seating plans'),
+            'url': reverse('control:organizer.seatingplans', kwargs={
+                'organizer': request.organizer.slug
+            }),
+            'active': 'organizer.seatingplan' in url.url_name,
+            'icon': 'street-view',
         })
 
     merge_in(nav, sorted(

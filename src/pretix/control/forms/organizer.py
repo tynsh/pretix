@@ -11,7 +11,7 @@ from i18nfield.forms import I18nFormField, I18nTextarea
 from pretix.api.models import WebHook
 from pretix.api.webhooks import get_all_webhook_events
 from pretix.base.forms import I18nModelForm, SettingsForm
-from pretix.base.models import Device, Organizer, Team
+from pretix.base.models import Device, Organizer, SeatingPlan, Team
 from pretix.control.forms import ExtFileField, MultipleLanguagesWidget
 from pretix.multidomain.models import KnownDomain
 from pretix.presale.style import get_fonts
@@ -304,3 +304,10 @@ class WebHookForm(forms.ModelForm):
                 'data-inverse-dependency': '#id_all_events'
             }),
         }
+
+
+class SeatingPlanForm(forms.ModelForm):
+
+    class Meta:
+        model = SeatingPlan
+        fields = ['name', 'layout']
