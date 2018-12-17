@@ -123,6 +123,7 @@ urlpatterns = [
         url(r'^settings/payment/(?P<provider>[^/]+)$', event.PaymentProviderSettings.as_view(),
             name='event.settings.payment.provider'),
         url(r'^settings/payment$', event.PaymentSettings.as_view(), name='event.settings.payment'),
+        url(r'^settings/seating$', event.SeatingSettings.as_view(), name='event.settings.seating'),
         url(r'^settings/tickets$', event.TicketSettings.as_view(), name='event.settings.tickets'),
         url(r'^settings/tickets/preview/(?P<output>[^/]+)$', event.TicketSettingsPreview.as_view(),
             name='event.settings.tickets.preview'),

@@ -37,12 +37,13 @@ from pretix.base.models import (
 from pretix.base.models.event import EventMetaValue
 from pretix.base.services import tickets
 from pretix.base.services.invoices import build_preview_invoice_pdf
+from pretix.base.services.seating import refresh_seat_cache
 from pretix.base.signals import register_ticket_outputs
 from pretix.base.templatetags.money import money_filter
 from pretix.base.templatetags.rich_text import markdown_compile_email
 from pretix.control.forms.event import (
     CancelSettingsForm, CommentForm, DisplaySettingsForm, EventDeleteForm,
-    EventMetaValueForm, EventSettingsForm, EventUpdateForm,
+    EventMetaValueForm, EventSeatingForm, EventSettingsForm, EventUpdateForm,
     InvoiceSettingsForm, MailSettingsForm, PaymentSettingsForm, ProviderForm,
     QuickSetupForm, QuickSetupProductFormSet, TaxRuleForm, TaxRuleLineFormSet,
     TicketSettingsForm, WidgetCodeForm,
@@ -1409,3 +1410,41 @@ class QuickSetupView(FormView):
                 },
             ] if self.request.method != "POST" else []
         )
+
+
+class SeatingSettings(EventSettingsViewMixin, EventPermissionRequiredMixin, UpdateView):
+    model = Event
+    form_class = EventSeatingForm
+    template_name = 'pretixcontrol/event/seating.html'
+    permission = 'can_change_event_settings'
+
+    @cached_property
+    def object(self) -> Event:
+        return self.request.event
+
+    def get_object(self, queryset=None) -> Event:
+        return self.object
+
+    @transaction.atomic
+    def form_valid(self, form):
+        if form.has_changed():
+            self.request.event.log_action('pretix.event.changed', user=self.request.user, data={
+                k: getattr(self.request.event, k) for k in form.changed_data
+            })
+        refresh_seat_cache(self.request.event, None)
+        messages.success(self.request, _('Your changes have been saved.'))
+        return super().form_valid(form)
+
+    def get_success_url(self) -> str:
+        return reverse('control:event.settings.seating', kwargs={
+            'organizer': self.object.organizer.slug,
+            'event': self.object.slug,
+        })
+
+    def post(self, request, *args, **kwargs):
+        form = self.get_form()
+        if form.is_valid():
+            return self.form_valid(form)
+        else:
+            messages.error(self.request, _('We could not save your changes. See below for details.'))
+            return self.form_invalid(form)

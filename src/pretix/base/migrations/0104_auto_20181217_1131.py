@@ -52,7 +52,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='seatcategorymapping',
             name='subevent',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='seat_category_mappings', to='pretixbase.SubEvent'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='seat_category_mappings', to='pretixbase.SubEvent', null=True, blank=True),
         ),
         migrations.AddField(
             model_name='seat',
@@ -62,7 +62,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='seat',
             name='subevent',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='seats', to='pretixbase.SubEvent'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='seats', to='pretixbase.SubEvent', null=True, blank=True),
         ),
         migrations.AddField(
             model_name='cartposition',

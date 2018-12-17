@@ -89,15 +89,16 @@ error_messages = {
                          'product %(base)s.'),
     'addon_only': _('One of the products you selected can only be bought as an add-on to another project.'),
     'bundled_only': _('One of the products you selected can only be bought part of a bundle.'),
+    'seat_required': _('You need to select a specific seat.'),
 }
 
 
 class CartManager:
     AddOperation = namedtuple('AddOperation', ('count', 'item', 'variation', 'price', 'voucher', 'quotas',
-                                               'addon_to', 'subevent', 'includes_tax', 'bundled'))
+                                               'addon_to', 'subevent', 'includes_tax', 'bundled', 'seat'))
     RemoveOperation = namedtuple('RemoveOperation', ('position',))
     ExtendOperation = namedtuple('ExtendOperation', ('position', 'count', 'item', 'variation', 'price', 'voucher',
-                                                     'quotas', 'subevent'))
+                                                     'quotas', 'subevent', 'seat'))
     order = {
         RemoveOperation: 10,
         ExtendOperation: 20,
@@ -215,6 +216,12 @@ class CartManager:
 
             if op.subevent and op.subevent.presale_has_ended:
                 raise CartError(error_messages['ended'])
+
+            if op.subevent:
+                if op.subevent.seating_plan and not op.seat:
+                    raise CartError(error_messages['seat_required'])
+            elif self.event.seating_plan and not op.seat:
+                raise CartError(error_messages['seat_required'])
 
         if isinstance(op, self.AddOperation):
             if op.item.category and op.item.category.is_addon and not (op.addon_to and op.addon_to != 'FAKE'):
@@ -409,7 +416,7 @@ class CartManager:
                 bop = self.AddOperation(
                     count=bundle.count, item=bitem, variation=bvar, price=bprice,
                     voucher=None, quotas=bundle_quotas, addon_to='FAKE', subevent=subevent,
-                    includes_tax=bool(bprice.rate), bundled=[]
+                    includes_tax=bool(bprice.rate), bundled=[], seat=None
                 )
                 self._check_item_constraints(bop)
                 bundled.append(bop)
@@ -418,7 +425,7 @@ class CartManager:
 
             op = self.AddOperation(
                 count=i['count'], item=item, variation=variation, price=price, voucher=voucher, quotas=quotas,
-                addon_to=False, subevent=subevent, includes_tax=bool(price.rate), bundled=bundled
+                addon_to=False, subevent=subevent, includes_tax=bool(price.rate), bundled=bundled, seat=None
             )
             self._check_item_constraints(op)
             operations.append(op)
@@ -524,7 +531,7 @@ class CartManager:
 
                 op = self.AddOperation(
                     count=1, item=item, variation=variation, price=price, voucher=None, quotas=quotas,
-                    addon_to=cp, subevent=cp.subevent, includes_tax=bool(price.rate), bundled=[]
+                    addon_to=cp, subevent=cp.subevent, includes_tax=bool(price.rate), bundled=[], seat=None
                 )
                 self._check_item_constraints(op)
                 operations.append(op)

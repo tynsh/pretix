@@ -261,6 +261,21 @@ class EventUpdateForm(I18nModelForm):
         }
 
 
+class EventSeatingForm(I18nModelForm):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['seating_plan'].queryset = self.instance.organizer.seating_plans.all()
+        self.fields['seating_plan'].empty_label = _('General admission only')
+
+    class Meta:
+        model = Event
+        localized_fields = '__all__'
+        fields = [
+            'seating_plan',
+        ]
+
+
 class EventSettingsForm(SettingsForm):
     show_date_to = forms.BooleanField(
         label=_("Show event end date"),
