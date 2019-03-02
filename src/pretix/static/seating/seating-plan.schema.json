@@ -1,5 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "0.0.1",
   "title": "Seating Plan",
   "description": "Seating plan for venues",
   "type": "object",
@@ -11,8 +12,25 @@
       "type": "array",
       "description": "List of zones",
       "items": { "$ref": "#/definitions/zone" }
+    },
+    "categories": {
+      "type": "array",
+      "description": "List of categories",
+      "items": { "$ref": "#/definitions/category" }
+    },
+    "size": {
+      "type": "object",
+      "description": "Size of the entire plan (in pixels)",
+      "properties": {
+        "width": { "type": "integer" },
+        "height": { "type": "integer" }
+      },
+      "required": ["width", "height"],
+      "additionalProperties": false
     }
   },
+  "required": ["zones", "name", "categories"],
+  "additionalProperties": false,
   "definitions": {
     "zone": {
       "type": "object",
@@ -81,19 +99,11 @@
         "position": { "$ref": "#/definitions/position" },
         "category": {
           "type": "string",
-          "description": "What category does this seat belong to?",
+          "description": "What category does this seat belong to? This needs to refer to the name of a category defined on the top level of the file.",
           "$comment": "Categories might be a separate property, that gives us more information about the specific categories."
-        },
-        "price": {
-          "type": "string",
-          "description": "Price of the seat"
-        },
-        "taken": {
-          "type": "boolean",
-          "description": "Is this seat already taken?"
         }
       },
-      "required": ["seat_number", "position", "taken"],
+      "required": ["seat_number", "position"],
       "additionalProperties": false
     },
     "area": {
@@ -115,6 +125,22 @@
         }
       },
       "required": ["x", "y"],
+      "additionalProperties": false
+    },
+    "category": {
+      "type": "object",
+      "description": "A category of seats, e.g. a price level.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Internal name of the seats, e.g. 'stalls'. This should be used to map this to actual shop products."
+        },
+        "color": {
+          "type": "string",
+          "description": "The color used to draw seats of this category."
+        }
+      },
+      "required": ["name"],
       "additionalProperties": false
     }
   }

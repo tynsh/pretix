@@ -19,7 +19,7 @@ from i18nfield.forms import (
 from pytz import common_timezones, timezone
 
 from pretix.base.forms import I18nModelForm, PlaceholderValidator, SettingsForm
-from pretix.base.models import Event, Organizer, TaxRule
+from pretix.base.models import Event, Organizer, Seat, TaxRule
 from pretix.base.models.event import EventMetaValue, SubEvent
 from pretix.base.reldate import RelativeDateField, RelativeDateTimeField
 from pretix.base.settings import PERSON_NAME_SCHEMES
@@ -262,11 +262,27 @@ class EventUpdateForm(I18nModelForm):
 
 
 class EventSeatingForm(I18nModelForm):
+    # TODO: Lots of validation if the plan is changed, i.e. only allowed if no taken seats vanish!
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['seating_plan'].queryset = self.instance.organizer.seating_plans.all()
         self.fields['seating_plan'].empty_label = _('General admission only')
+        self.fields['seating_plan'].help_text = _('After changing the seating plan, please save and reload this page to assign the new categories.')
+        current_mappings = {
+            m.layout_category: m
+            for m in self.instance.seat_category_mappings.filter(subevent=None)
+        }
+        if self.instance.seating_plan:
+            sp = self.instance.seating_plan
+            for i, cat in enumerate(sp.get_categories()):
+                self.fields['cat_{}'.format(i)] = forms.ModelChoiceField(
+                    label=cat.name,
+                    empty_label=_('Not for sale'),
+                    queryset=self.instance.items.all()
+                )
+                if cat.name in current_mappings:
+                    self.initial['cat_{}'.format(i)] = current_mappings.get(cat.name).product
 
     class Meta:
         model = Event
@@ -274,6 +290,57 @@ class EventSeatingForm(I18nModelForm):
         fields = [
             'seating_plan',
         ]
+
+    def save(self, *args, **kwargs):
+        r = super().save(*args, **kwargs)
+
+        # Update mappings
+        current_mappings = {
+            m.layout_category: m
+            for m in self.instance.seat_category_mappings.filter(subevent=None)
+        }
+        mapping = {}
+        for n, f in self.fields.items():
+            if not n.startswith('cat_'):
+                continue
+            if f.label in current_mappings:
+                m = current_mappings.pop(f.label)
+                if self.cleaned_data[n] != m.product:
+                    m.product = self.cleaned_data[n]
+                    m.save()
+            else:
+                self.instance.seat_category_mappings.create(
+                    subevent=None, layout_category=f.label,
+                    product=self.cleaned_data[n]
+                )
+            mapping[f.label] = self.cleaned_data[n]
+            for v in current_mappings.values():
+                v.delete()
+
+        # Update seats
+        current_seats = {
+            s.name: s for s in self.instance.seats.select_related('product').filter(subevent=None)
+        }
+        create_seats = []
+        for ss in self.instance.seating_plan.iter_all_seats():
+            p = mapping.get(ss.category)
+            sname = ss.name
+            if sname in current_seats:
+                seat = current_seats.pop(sname)
+                if seat.product != p:
+                    seat.product = p
+                    seat.save()
+            else:
+                create_seats.append(Seat(
+                    event=self.instance,
+                    subevent=None,
+                    name=ss.name,
+                    product=p,
+                ))
+
+        Seat.objects.bulk_create(create_seats)
+        Seat.objects.filter(pk__in=[s.pk for s in current_seats.values()]).delete()
+        return r
 
 
 class EventSettingsForm(SettingsForm):

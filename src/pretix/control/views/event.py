@@ -37,7 +37,6 @@ from pretix.base.models import (
 from pretix.base.models.event import EventMetaValue
 from pretix.base.services import tickets
 from pretix.base.services.invoices import build_preview_invoice_pdf
-from pretix.base.services.seating import refresh_seat_cache
 from pretix.base.signals import register_ticket_outputs
 from pretix.base.templatetags.money import money_filter
 from pretix.base.templatetags.rich_text import markdown_compile_email
@@ -1429,9 +1428,8 @@ class SeatingSettings(EventSettingsViewMixin, EventPermissionRequiredMixin, Upda
     def form_valid(self, form):
         if form.has_changed():
             self.request.event.log_action('pretix.event.changed', user=self.request.user, data={
-                k: getattr(self.request.event, k) for k in form.changed_data
+                k: form.cleaned_data[k] for k in form.changed_data
             })
-        refresh_seat_cache(self.request.event, None)
         messages.success(self.request, _('Your changes have been saved.'))
         return super().form_valid(form)
 
