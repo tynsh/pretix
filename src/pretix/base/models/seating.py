@@ -6,6 +6,7 @@ from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.deconstruct import deconstructible
+from django.utils.timezone import now
 from django.utils.translation import ugettext_lazy as _
 
 from pretix.base.models import Event, Item, LoggedModel, Organizer, SubEvent
@@ -79,3 +80,13 @@ class Seat(models.Model):
 
     def __str__(self):
         return self.name
+
+    def is_available(self, ignore_cart=None, ignore_orderpos=None):
+        from .orders import Order
+        opqs = self.orderposition_set.filter(order__status__in=[Order.STATUS_PENDING, Order.STATUS_PAID])
+        cpqs = self.cartposition_set.filter(expires__gte=now())
+        if ignore_cart:
+            cpqs = cpqs.exclude(pk=ignore_cart.pk)
+        if ignore_orderpos:
+            opqs = opqs.exclude(pk=ignore_orderpos.pk)
+        return not opqs.exists() and not cpqs.exists()

@@ -170,6 +170,11 @@
   border: 1px solid #ddd;
 }
 
+svg.svg-icon {
+  position: relative;
+  top: 2px;
+}
+
 @include table-row-variant('success', lighten($brand-success, 40%));
 @include table-row-variant('info', lighten($brand-info, 30%));
 @include table-row-variant('warning', lighten($brand-warning, 40%));

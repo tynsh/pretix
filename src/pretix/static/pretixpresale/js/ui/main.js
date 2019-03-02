@@ -174,11 +174,17 @@ $(function () {
                     is_enabled = true;
                 }
             });
+            $(".input-seat-selection option").each(function() {
+                if ($(this).val() && $(this).val() !== "" && $(this).prop('selected')) {
+                    is_enabled = true;
+                }
+            });
         }
         $("#btn-add-to-cart").prop("disabled", !is_enabled);
     };
     update_cart_form();
-    $(".product-row input[type=checkbox], .variations input[type=checkbox], .product-row input[type=radio], .variations input[type=radio], .input-item-count").on("change mouseup keyup", update_cart_form);
+    $(".product-row input[type=checkbox], .variations input[type=checkbox], .product-row input[type=radio], .variations input[type=radio], .input-item-count, .input-seat-selection")
+        .on("change mouseup keyup", update_cart_form);
 
     $(".table-calendar td.has-events").click(function () {
         var $tr = $(this).closest(".table-calendar").find(".selected-day");

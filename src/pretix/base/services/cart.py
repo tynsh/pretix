@@ -6,7 +6,7 @@ from typing import List, Optional
 from celery.exceptions import MaxRetriesExceededError
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.dispatch import receiver
 from django.utils.timezone import now
 from django.utils.translation import pgettext_lazy, ugettext as _
@@ -14,7 +14,7 @@ from django.utils.translation import pgettext_lazy, ugettext as _
 from pretix.base.i18n import language
 from pretix.base.models import (
     CartPosition, Event, InvoiceAddress, Item, ItemBundle, ItemVariation,
-    Voucher,
+    Seat, Voucher,
 )
 from pretix.base.models.event import SubEvent
 from pretix.base.models.orders import OrderFee
@@ -90,6 +90,10 @@ error_messages = {
     'addon_only': _('One of the products you selected can only be bought as an add-on to another project.'),
     'bundled_only': _('One of the products you selected can only be bought part of a bundle.'),
     'seat_required': _('You need to select a specific seat.'),
+    'seat_invalid': _('Please select a valid seat.'),
+    'seat_forbidden': _('You can not select a seat for this position.'),
+    'seat_unavailable': _('The seat you selected has already been taken by a different. Please select a different seat.'),
+    'seat_multiple': _('You can not select the same seat multiple times.'),
 }
 
 
@@ -166,6 +170,8 @@ class CartManager:
             i.pk: i
             for i in self.event.items.select_related('category').prefetch_related(
                 'addons', 'bundles', 'addons__addon_category', 'quotas'
+            ).annotate(
+                requires_seat=Count('seat_category_mappings')
             ).filter(
                 id__in=[i for i in item_ids if i and i not in self._items_cache]
             )
@@ -174,6 +180,8 @@ class CartManager:
             v.pk: v
             for v in ItemVariation.objects.filter(item__event=self.event).prefetch_related(
                 'quotas'
+            ).annotate(
+                requires_seat=Count('item__seat_category_mappings')
             ).select_related('item', 'item__event').filter(
                 id__in=[i for i in variation_ids if i and i not in self._variations_cache]
             )
@@ -217,11 +225,14 @@ class CartManager:
             if op.subevent and op.subevent.presale_has_ended:
                 raise CartError(error_messages['ended'])
 
-            if op.subevent:
-                if op.subevent.seating_plan and not op.seat:
-                    raise CartError(error_messages['seat_required'])
-            elif self.event.seating_plan and not op.seat:
-                raise CartError(error_messages['seat_required'])
+            if op.item.requires_seat and not op.seat:
+                raise CartError(error_messages['seat_invalid'])
+            elif op.seat and not op.item.requires_seat:
+                raise CartError(error_messages['seat_forbidden'])
+            elif op.seat and op.seat.product != op.item:
+                raise CartError(error_messages['seat_invalid'])
+            elif op.seat and op.count > 1:
+                raise CartError('Invalid request: A seat can only be bought once.')
 
         if isinstance(op, self.AddOperation):
             if op.item.category and op.item.category.is_addon and not (op.addon_to and op.addon_to != 'FAKE'):
@@ -373,6 +384,13 @@ class CartManager:
                 else:
                     voucher_use_diff[voucher] += i['count']
 
+            seat = None
+            if i.get('seat'):
+                try:
+                    seat = (subevent or self.event).seats.get(pk=i.get('seat'))
+                except Seat.DoesNotExist:
+                    raise CartError(error_messages['seat_invalid'])
+
             # Fetch all quotas. If there are no quotas, this item is not allowed to be sold.
             quotas = list(item.quotas.filter(subevent=subevent)
                           if variation is None else variation.quotas.filter(subevent=subevent))
@@ -425,7 +443,7 @@ class CartManager:
 
             op = self.AddOperation(
                 count=i['count'], item=item, variation=variation, price=price, voucher=voucher, quotas=quotas,
-                addon_to=False, subevent=subevent, includes_tax=bool(price.rate), bundled=bundled, seat=None
+                addon_to=False, subevent=subevent, includes_tax=bool(price.rate), bunded=bundled, seat=seat
             )
             self._check_item_constraints(op)
             operations.append(op)
@@ -531,7 +549,7 @@ class CartManager:
 
                 op = self.AddOperation(
                     count=1, item=item, variation=variation, price=price, voucher=None, quotas=quotas,
-                    addon_to=cp, subevent=cp.subevent, includes_tax=bool(price.rate), bundled=[], seat=None
+                    addon_to=cp, subevent=cp.subevent, includes_tax=bool(price.rate), bundled=[], seat=cp.seat
                 )
                 self._check_item_constraints(op)
                 operations.append(op)
@@ -657,6 +675,7 @@ class CartManager:
         err = err or self._check_min_per_product()
 
         self._operations.sort(key=lambda a: self.order[type(a)])
+        seats_seen = set()
 
         for op in self._operations:
             if isinstance(op, self.RemoveOperation):
@@ -669,6 +688,11 @@ class CartManager:
             elif isinstance(op, self.AddOperation) or isinstance(op, self.ExtendOperation):
                 # Create a CartPosition for as much items as we can
                 requested_count = quota_available_count = voucher_available_count = op.count
+
+                if op.seat:
+                    if op.seat in seats_seen:
+                        err = err or error_messages['seat_multiple']
+                    seats_seen.add(op.seat)
 
                 if op.quotas:
                     quota_available_count = min(requested_count, min(quotas_ok[q] for q in op.quotas))
@@ -715,12 +739,16 @@ class CartManager:
                     available_count = 0
 
                 if isinstance(op, self.AddOperation):
+                    if op.seat and not op.seat.is_available():
+                        available_count = 0
+                        err = err or error_messages['seat_unavailable']
+
                     for k in range(available_count):
                         cp = CartPosition(
                             event=self.event, item=op.item, variation=op.variation,
                             price=op.price.gross, expires=self._expiry, cart_id=self.cart_id,
                             voucher=op.voucher, addon_to=op.addon_to if op.addon_to else None,
-                            subevent=op.subevent, includes_tax=op.includes_tax
+                            subevent=op.subevent, includes_tax=op.includes_tax, seat=op.seat
                         )
                         if self.event.settings.attendee_names_asked:
                             scheme = PERSON_NAME_SCHEMES.get(self.event.settings.name_scheme)
@@ -759,7 +787,11 @@ class CartManager:
 
                         new_cart_positions.append(cp)
                 elif isinstance(op, self.ExtendOperation):
-                    if available_count == 1:
+                    if op.seat and not op.seat.is_available(ignore_cart=op.position):
+                        err = err or error_messages['seat_unavailable']
+                        op.position.addons.all().delete()
+                        op.position.delete()
+                    elif available_count == 1:
                         op.position.expires = self._expiry
                         op.position.price = op.price.gross
                         op.position.save()
@@ -859,7 +891,7 @@ def add_items_to_cart(self, event: int, items: List[dict], cart_id: str=None, lo
     """
     Adds a list of items to a user's cart.
     :param event: The event ID in question
-    :param items: A list of dicts with the keys item, variation, count, custom_price, voucher
+    :param items: A list of dicts with the keys item, variation, count, custom_price, voucher, seat ID
     :param cart_id: Session ID of a guest
     :raises CartError: On any error that occured
     """

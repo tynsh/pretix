@@ -348,6 +348,26 @@ class Event(EventMixin, LoggedModel):
         return str(self.name)
 
     @property
+    def free_seats(self):
+        from .orders import CartPosition, Order, OrderPosition
+        return self.seats.annotate(
+            has_order=Exists(
+                OrderPosition.objects.filter(
+                    order__event=self,
+                    seat_id=OuterRef('pk'),
+                    order__status__in=[Order.STATUS_PENDING, Order.STATUS_PAID]
+                )
+            ),
+            has_cart=Exists(
+                CartPosition.objects.filter(
+                    event=self,
+                    seat_id=OuterRef('pk'),
+                    expires__gte=now()
+                )
+            )
+        ).filter(has_order=False, has_cart=False)
+
+    @property
     def presale_has_ended(self):
         if self.has_subevents:
             return self.presale_end and now() > self.presale_end
@@ -894,6 +914,28 @@ class SubEvent(EventMixin, LoggedModel):
 
     def __str__(self):
         return '{} - {}'.format(self.name, self.get_date_range_display())
+
+    @property
+    def free_seats(self):
+        from .orders import CartPosition, Order, OrderPosition
+        return self.seats.annotate(
+            has_order=Exists(
+                OrderPosition.objects.filter(
+                    order__event_id=self.event_id,
+                    subevent=self,
+                    seat_id=OuterRef('pk'),
+                    order__status__in=[Order.STATUS_PENDING, Order.STATUS_PAID]
+                )
+            ),
+            has_cart=Exists(
+                CartPosition.objects.filter(
+                    order__event_id=self.event_id,
+                    subevent=self,
+                    seat_id=OuterRef('pk'),
+                    expires__gte=now()
+                )
+            )
+        ).filter(has_order=False, has_cart=False)
 
     @cached_property
     def settings(self):
