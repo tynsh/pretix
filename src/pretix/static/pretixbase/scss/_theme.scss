@@ -1,6 +1,13 @@
 .sidebar-nav li > a > .fa {
   color: $navbar-inverse-bg;
 }
+.sidebar-nav li > a > svg {
+  position: relative;
+  top: 3px;
+  path {
+    fill: $navbar-inverse-bg;
+  }
+}
 .nav .testmode a {
   background: $brand-warning;
   color: black;

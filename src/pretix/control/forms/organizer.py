@@ -311,3 +311,11 @@ class SeatingPlanForm(forms.ModelForm):
     class Meta:
         model = SeatingPlan
         fields = ['name', 'layout']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance:
+            if self.instance.events.exists() or self.instance.subevents.exists():
+                self.fields['layout'].disabled = True
+                self.fields['layout'].help_text = _('You cannot change this plan any more since it is already used in some of your events. Please create a '
+                                                    'copy instead.')

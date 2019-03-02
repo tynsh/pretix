@@ -914,7 +914,6 @@ class SeatingPlanCreateView(OrganizerDetailViewMixin, OrganizerPermissionRequire
 
 
 class SeatingPlanUpdateView(OrganizerDetailViewMixin, OrganizerPermissionRequiredMixin, UpdateView):
-    # TODO: once used, a plan shouild be immutable
     model = SeatingPlan
     template_name = 'pretixcontrol/organizers/seatingplan_edit.html'
     permission = 'can_change_organizer_settings'
