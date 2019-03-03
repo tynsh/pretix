@@ -514,7 +514,7 @@ def _check_positions(event: Event, now_dt: datetime, positions: List[CartPositio
             err = err or error_messages['price_changed']
             continue
 
-        if cp.seat:
+        if cp.seat or cp.seat.blocked:
             if not cp.seat.is_available(ignore_cart=cp):
                 err = err or error_messages['seat_unavailable']
                 cp.delete()

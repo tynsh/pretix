@@ -365,7 +365,7 @@ class Event(EventMixin, LoggedModel):
                     expires__gte=now()
                 )
             )
-        ).filter(has_order=False, has_cart=False)
+        ).filter(has_order=False, has_cart=False, blocked=False)
 
     @property
     def presale_has_ended(self):
@@ -935,7 +935,7 @@ class SubEvent(EventMixin, LoggedModel):
                     expires__gte=now()
                 )
             )
-        ).filter(has_order=False, has_cart=False)
+        ).filter(has_order=False, has_cart=False, blocked=False)
 
     @cached_property
     def settings(self):

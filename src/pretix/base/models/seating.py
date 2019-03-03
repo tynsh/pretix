@@ -83,6 +83,9 @@ class Seat(models.Model):
 
     def is_available(self, ignore_cart=None, ignore_orderpos=None):
         from .orders import Order
+
+        if self.blocked:
+            return False
         opqs = self.orderposition_set.filter(order__status__in=[Order.STATUS_PENDING, Order.STATUS_PAID])
         cpqs = self.cartposition_set.filter(expires__gte=now())
         if ignore_cart:

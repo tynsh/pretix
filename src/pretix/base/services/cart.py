@@ -171,7 +171,8 @@ class CartManager:
             for i in self.event.items.select_related('category').prefetch_related(
                 'addons', 'bundles', 'addons__addon_category', 'quotas'
             ).annotate(
-                requires_seat=Count('seat_category_mappings')
+                requires_seat=Count('seat_category_mappings'),
+                has_variations=Count('variations'),
             ).filter(
                 id__in=[i for i in item_ids if i and i not in self._items_cache]
             )
@@ -210,6 +211,12 @@ class CartManager:
             if self._sales_channel not in op.item.sales_channels:
                 raise CartError(error_messages['unavailable'])
 
+            if op.item.has_variations and not op.variation:
+                raise CartError(error_messages['not_for_sale'])
+
+            if op.variation and op.variation.item_id != op.item.pk:
+                raise CartError(error_messages['not_for_sale'])
+
             if op.voucher and not op.voucher.applies_to(op.item, op.variation):
                 raise CartError(error_messages['voucher_invalid_item'])
 
@@ -225,7 +232,7 @@ class CartManager:
             if op.subevent and op.subevent.presale_has_ended:
                 raise CartError(error_messages['ended'])
 
-            if op.item.requires_seat and not op.seat:
+            if op.item.requires_seat and (not op.seat or op.seat.blocked):
                 raise CartError(error_messages['seat_invalid'])
             elif op.seat and not op.item.requires_seat:
                 raise CartError(error_messages['seat_forbidden'])
