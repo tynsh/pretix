@@ -13,8 +13,8 @@ from django.utils.translation import pgettext_lazy, ugettext as _
 
 from pretix.base.i18n import language
 from pretix.base.models import (
-    CartPosition, Event, InvoiceAddress, Item, ItemBundle, ItemVariation,
-    Seat, Voucher,
+    CartPosition, Event, InvoiceAddress, Item, ItemBundle, ItemVariation, Seat,
+    Voucher,
 )
 from pretix.base.models.event import SubEvent
 from pretix.base.models.orders import OrderFee
@@ -293,6 +293,8 @@ class CartManager:
     def extend_expired_positions(self):
         expired = self.positions.filter(expires__lte=self.now_dt).select_related(
             'item', 'variation', 'voucher', 'addon_to', 'addon_to__item'
+        ).annotate(
+            requires_seat=Count('item__seat_category_mappings'),
         ).prefetch_related(
             'item__quotas',
             'variation__quotas',
@@ -301,6 +303,8 @@ class CartManager:
         err = None
         changed_prices = {}
         for cp in expired:
+            cp.item.requires_seat = cp.requires_seat
+
             if cp.is_bundled:
                 try:
                     bundle = cp.addon_to.item.bundles.get(bundled_item=cp.item, bundled_variation=cp.variation)
@@ -347,7 +351,7 @@ class CartManager:
 
             op = self.ExtendOperation(
                 position=cp, item=cp.item, variation=cp.variation, voucher=cp.voucher, count=1,
-                price=price, quotas=quotas, subevent=cp.subevent
+                price=price, quotas=quotas, subevent=cp.subevent, seat=cp.seat
             )
             self._check_item_constraints(op)
 
@@ -450,7 +454,7 @@ class CartManager:
 
             op = self.AddOperation(
                 count=i['count'], item=item, variation=variation, price=price, voucher=voucher, quotas=quotas,
-                addon_to=False, subevent=subevent, includes_tax=bool(price.rate), bunded=bundled, seat=seat
+                addon_to=False, subevent=subevent, includes_tax=bool(price.rate), bundled=bundled, seat=seat
             )
             self._check_item_constraints(op)
             operations.append(op)

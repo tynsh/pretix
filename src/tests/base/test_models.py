@@ -1838,22 +1838,21 @@ class CheckinListTestCase(TestCase):
 
 
 class SeatingTestCase(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.organizer = Organizer.objects.create(name='Dummy', slug='dummy')
-        cls.event = Event.objects.create(
-            organizer=cls.organizer, name='Dummy', slug='dummy',
+    def setUp(self):
+        self.organizer = Organizer.objects.create(name='Dummy', slug='dummy')
+        self.event = Event.objects.create(
+            organizer=self.organizer, name='Dummy', slug='dummy',
             date_from=now(), date_to=now() - timedelta(hours=1),
         )
-        cls.ticket = cls.event.items.create(name="Ticket", default_price=12)
-        cls.plan = SeatingPlan.objects.create(
-            name="Plan", organizer=cls.organizer, layout="{}"
+        self.ticket = self.event.items.create(name="Ticket", default_price=12)
+        self.plan = SeatingPlan.objects.create(
+            name="Plan", organizer=self.organizer, layout="{}"
         )
-        cls.event.seat_category_mappings.create(
-            layout_category='Stalls', product=cls.ticket
+        self.event.seat_category_mappings.create(
+            layout_category='Stalls', product=self.ticket
         )
-        cls.seat_a1 = cls.event.seats.create(name="A1", product=cls.ticket)
-        cls.seat_a2 = cls.event.seats.create(name="A2", product=cls.ticket)
+        self.seat_a1 = self.event.seats.create(name="A1", product=self.ticket, blocked=False)
+        self.seat_a2 = self.event.seats.create(name="A2", product=self.ticket, blocked=False)
 
     def test_free(self):
         assert set(self.event.free_seats) == {self.seat_a1, self.seat_a2}
@@ -1935,7 +1934,7 @@ class SeatingTestCase(TestCase):
             order=o, item=self.ticket, variation=None, price=Decimal("12"),
             seat=self.seat_a1, subevent=se1
         )
-        assert set(se1.free_seats) == {}
+        assert set(se1.free_seats) == set()
         assert not self.seat_a1.is_available()
 
     def test_subevent_order_canceled(self):
@@ -1960,10 +1959,10 @@ class SeatingTestCase(TestCase):
         self.seat_a1.save()
         CartPosition.objects.create(
             event=self.event, cart_id='a', item=self.ticket, seat=self.seat_a1,
-            price=23, expires=now() + timedelta(minutes=10)
+            price=23, expires=now() + timedelta(minutes=10), subevent=se1
         )
-        assert set(se1.free_seats) == {}
-        assert self.seat_a1.is_available()
+        assert set(se1.free_seats) == set()
+        assert not self.seat_a1.is_available()
 
     def test_subevent_cart_expired(self):
         se1 = self.event.subevents.create(date_from=now(), name="SE 1")
@@ -1971,10 +1970,10 @@ class SeatingTestCase(TestCase):
         self.seat_a1.save()
         CartPosition.objects.create(
             event=self.event, cart_id='a', item=self.ticket, seat=self.seat_a1,
-            price=23, expires=now() - timedelta(minutes=10)
+            price=23, expires=now() - timedelta(minutes=10), subevent=se1
         )
         assert set(se1.free_seats) == {self.seat_a1}
-        assert not self.seat_a1.is_available()
+        assert self.seat_a1.is_available()
 
 
 @pytest.mark.django_db

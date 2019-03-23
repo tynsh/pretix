@@ -457,9 +457,10 @@ def _check_positions(event: Event, now_dt: datetime, positions: List[CartPositio
 
         if (cp.requires_seat and not cp.seat) or (cp.seat and not cp.requires_seat) or (cp.seat and cp.seat.product != cp.item) or cp.seat in seats_seen:
             err = err or error_messages['seat_invalid']
-            cp.delete()
+            delete(cp)
             break
-        seats_seen.add(cp.seat)
+        if cp.seat:
+            seats_seen.add(cp.seat)
 
         if cp.item.require_voucher and cp.voucher is None:
             delete(cp)
@@ -514,8 +515,8 @@ def _check_positions(event: Event, now_dt: datetime, positions: List[CartPositio
             err = err or error_messages['price_changed']
             continue
 
-        if cp.seat or cp.seat.blocked:
-            if not cp.seat.is_available(ignore_cart=cp):
+        if cp.seat:
+            if not cp.seat.is_available(ignore_cart=cp) or cp.seat.blocked:
                 err = err or error_messages['seat_unavailable']
                 cp.delete()
                 continue

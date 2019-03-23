@@ -929,7 +929,7 @@ class SubEvent(EventMixin, LoggedModel):
             ),
             has_cart=Exists(
                 CartPosition.objects.filter(
-                    order__event_id=self.event_id,
+                    event_id=self.event_id,
                     subevent=self,
                     seat_id=OuterRef('pk'),
                     expires__gte=now()
