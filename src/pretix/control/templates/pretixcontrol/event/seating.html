@@ -15,11 +15,7 @@
             <p>
                 {% trans "Please map every category in your seating plan to one product in pretix that defines the prices and availabilities of these seats. If you map a category to a product with variations, the user may choose between those variations for this seat." %}
             </p>
-            {% for f in form %}
-                {% if "cat_" in f.name %}
-                    {% bootstrap_field f layout="control" %}
-                {% endif %}
-            {% endfor %}
+            <div id="seat_category_mapping" data-src="{% url "control:event.settings.seating.mapform" event=request.event.slug organizer=request.organizer.slug %}"></div>
         </fieldset>
         <div class="form-group submit-group">
             <button type="submit" class="btn btn-primary btn-save">

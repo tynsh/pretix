@@ -124,6 +124,15 @@
                     {% endfor %}
                 </fieldset>
                 <fieldset>
+                    <legend>{% trans "Seating" %}</legend>
+                    {% bootstrap_field form.seating_plan layout="control" %}
+                    {% if subevent.pk %}
+                        <div id="seat_category_mapping" data-src="{% url "control:event.subevents.seating.mapform" event=request.event.slug organizer=request.organizer.slug subevent=subevent.pk %}"></div>
+                    {% else %}
+                        <div id="seat_category_mapping" data-src="{% url "control:event.subevents.seating.mapform" event=request.event.slug organizer=request.organizer.slug %}"></div>
+                    {% endif %}
+                </fieldset>
+                <fieldset>
                     <legend>{% trans "Check-in lists" %}</legend>
                     <div class="formset" data-formset data-formset-prefix="{{ cl_formset.prefix }}">
                         {{ cl_formset.management_form }}

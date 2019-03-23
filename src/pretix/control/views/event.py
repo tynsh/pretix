@@ -44,8 +44,8 @@ from pretix.control.forms.event import (
     CancelSettingsForm, CommentForm, DisplaySettingsForm, EventDeleteForm,
     EventMetaValueForm, EventSeatingForm, EventSettingsForm, EventUpdateForm,
     InvoiceSettingsForm, MailSettingsForm, PaymentSettingsForm, ProviderForm,
-    QuickSetupForm, QuickSetupProductFormSet, TaxRuleForm, TaxRuleLineFormSet,
-    TicketSettingsForm, WidgetCodeForm,
+    QuickSetupForm, QuickSetupProductFormSet, SeatCategoryMapForm, TaxRuleForm,
+    TaxRuleLineFormSet, TicketSettingsForm, WidgetCodeForm,
 )
 from pretix.control.permissions import EventPermissionRequiredMixin
 from pretix.helpers.database import rolledback_transaction
@@ -1411,6 +1411,19 @@ class QuickSetupView(FormView):
         )
 
 
+class SeatingMapFormView(EventSettingsViewMixin, EventPermissionRequiredMixin, TemplateView):
+    template_name = 'pretixcontrol/event/seating_mapform.html'
+    permission = 'can_change_settings'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx['form'] = SeatCategoryMapForm(
+            plan=self.request.organizer.seating_plans.filter(pk=self.request.GET.get('plan')).first() if self.request.GET.get('plan') else None,
+            instance=self.request.event
+        )
+        return ctx
+
+
 class SeatingSettings(EventSettingsViewMixin, EventPermissionRequiredMixin, UpdateView):
     model = Event
     form_class = EventSeatingForm
@@ -1442,7 +1455,15 @@ class SeatingSettings(EventSettingsViewMixin, EventPermissionRequiredMixin, Upda
     def post(self, request, *args, **kwargs):
         form = self.get_form()
         if form.is_valid():
-            return self.form_valid(form)
-        else:
-            messages.error(self.request, _('We could not save your changes. See below for details.'))
-            return self.form_invalid(form)
+            mf = SeatCategoryMapForm(
+                plan=form.cleaned_data.get('seating_plan'),
+                instance=self.request.event,
+                data=request.POST
+            )
+            if mf.is_valid():
+                r = self.form_valid(form)
+                mf.save()
+                return r
+
+        messages.error(self.request, _('We could not save your changes. See below for details.'))
+        return self.form_invalid(form)

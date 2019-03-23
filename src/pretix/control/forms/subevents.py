@@ -22,6 +22,8 @@ class SubEventForm(I18nModelForm):
         self.event = kwargs['event']
         super().__init__(*args, **kwargs)
         self.fields['location'].widget.attrs['rows'] = '3'
+        self.fields['seating_plan'].queryset = self.event.organizer.seating_plans.all()
+        self.fields['seating_plan'].empty_label = _('General admission only')
 
     class Meta:
         model = SubEvent
@@ -35,7 +37,8 @@ class SubEventForm(I18nModelForm):
             'presale_start',
             'presale_end',
             'location',
-            'frontpage_text'
+            'frontpage_text',
+            'seating_plan'
         ]
         field_classes = {
             'date_from': SplitDateTimeField,

@@ -14,7 +14,9 @@ from django.utils.functional import cached_property
 from django.utils.timezone import make_aware
 from django.utils.translation import pgettext_lazy, ugettext_lazy as _
 from django.views import View
-from django.views.generic import CreateView, DeleteView, ListView, UpdateView
+from django.views.generic import (
+    CreateView, DeleteView, ListView, TemplateView, UpdateView,
+)
 
 from pretix.base.models.checkin import CheckinList
 from pretix.base.models.event import SubEvent, SubEventMetaValue
@@ -23,6 +25,7 @@ from pretix.base.models.items import (
 )
 from pretix.base.reldate import RelativeDate, RelativeDateWrapper
 from pretix.control.forms.checkin import CheckinListForm
+from pretix.control.forms.event import SeatCategoryMapForm
 from pretix.control.forms.filter import SubEventFilterForm
 from pretix.control.forms.item import QuotaForm
 from pretix.control.forms.subevents import (
@@ -348,6 +351,39 @@ class SubEventEditorMixin(MetaDataEditorMixin):
         ) and self.cl_formset.is_valid()
 
 
+class SeatingMapFormView(EventPermissionRequiredMixin, TemplateView):
+    permission = 'can_change_settings'
+    template_name = 'pretixcontrol/event/seating_mapform.html'
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        if 'subevent' in self.kwargs:
+            subevent = self.request.event.subevents.get(pk=self.kwargs.get('subevent'))
+        else:
+            subevent = SubEvent(event=self.request.event)
+
+        plan = self.request.organizer.seating_plans.filter(pk=self.request.GET.get('plan')).first() if self.request.GET.get('plan') else None
+
+        initial = {}
+        if 'copy_from' in self.request.GET:
+            try:
+                copy_from = self.request.event.subevents.get(pk=self.request.GET.get("copy_from"))
+                current_mappings = {m.layout_category: m for m in copy_from.seat_category_mappings.all()}
+                if plan:
+                    for i, cat in enumerate(plan.get_categories()):
+                        initial['cat_{}'.format(i)] = current_mappings.get(cat.name).product
+
+            except SubEvent.DoesNotExist:
+                pass
+
+        ctx['form'] = SeatCategoryMapForm(
+            plan=plan,
+            instance=subevent,
+            initial=initial
+        )
+        return ctx
+
+
 class SubEventUpdate(EventPermissionRequiredMixin, SubEventEditorMixin, UpdateView):
     model = SubEvent
     template_name = 'pretixcontrol/subevents/detail.html'
@@ -359,9 +395,16 @@ class SubEventUpdate(EventPermissionRequiredMixin, SubEventEditorMixin, UpdateVi
         self.object = self.get_object()
         form = self.get_form()
         if self.is_valid(form):
-            return self.form_valid(form)
-        else:
-            return self.form_invalid(form)
+            mf = SeatCategoryMapForm(
+                plan=form.cleaned_data.get('seating_plan'),
+                instance=self.object,
+                data=request.POST
+            )
+            if mf.is_valid():
+                r = self.form_valid(form)
+                mf.save()
+                return r
+        return self.form_invalid(form)
 
     def get_object(self, queryset=None) -> SubEvent:
         try:
@@ -413,9 +456,18 @@ class SubEventCreate(SubEventEditorMixin, EventPermissionRequiredMixin, CreateVi
         self.object = SubEvent(event=self.request.event)
         form = self.get_form()
         if self.is_valid(form):
-            return self.form_valid(form)
-        else:
-            return self.form_invalid(form)
+            mf = SeatCategoryMapForm(
+                plan=form.cleaned_data.get('seating_plan'),
+                instance=SubEvent(event=self.request.event),
+                data=request.POST
+            )
+            if mf.is_valid():
+                r = self.form_valid(form)
+                mf.instance = form.instance
+                mf.subevent = form.instance
+                mf.save()
+                return r
+        return self.form_invalid(form)
 
     def get_success_url(self) -> str:
         return reverse('control:event.subevents', kwargs={
@@ -654,7 +706,6 @@ class SubEventBulkCreate(SubEventEditorMixin, EventPermissionRequiredMixin, Crea
 
     @transaction.atomic
     def form_valid(self, form):
-
         tz = self.request.event.timezone
         cnt = 0
         for rdate in self.get_rrule_set():
@@ -728,6 +779,14 @@ class SubEventBulkCreate(SubEventEditorMixin, EventPermissionRequiredMixin, Crea
                 i.subevent = se
                 i.save()
 
+            mf = SeatCategoryMapForm(
+                plan=se.seating_plan,
+                instance=se,
+                data=self.request.POST
+            )
+            mf.is_valid()
+            mf.save()
+
             cnt += 1
 
         messages.success(self.request, pgettext_lazy('subevent', '{} new dates have been created.').format(cnt))
@@ -739,7 +798,14 @@ class SubEventBulkCreate(SubEventEditorMixin, EventPermissionRequiredMixin, Crea
     def post(self, request, *args, **kwargs):
         form = self.get_form()
         self.object = SubEvent(event=self.request.event)
+
         if self.is_valid(form):
-            return self.form_valid(form)
-        else:
-            return self.form_invalid(form)
+            mf = SeatCategoryMapForm(
+                plan=form.cleaned_data.get('seating_plan'),
+                instance=SubEvent(event=self.request.event),
+                data=request.POST
+            )
+            if mf.is_valid():
+                return self.form_valid(form)
+
+        return self.form_invalid(form)
